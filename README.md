@@ -47,4 +47,4 @@ If any issue occurs, please let me know it.
 - [ ] add cross platform support
 - [ ] if `output.json` is empty, skip the question step
 - [ ] check sequence of token and id parameters
-- [ ] flexible output format and structure
+- [x] flexible output format and structure

@@ -2,7 +2,7 @@ const puppeteer = require('puppeteer-core');
 const fs = require('fs')
 const { join } = require('path');
 
-const { rli, question, HTMLTransformer } = require('./lib');
+const { rli, question, HTMLTransformer, DayOneTransformer } = require('./lib');
 
 // Exceptions
 const COOKIE_INVALID = 'The cookies are invalid or give it another try due to the network timeout.';
@@ -44,12 +44,12 @@ function getCookies(cookieFilePath) {
   });
 }
 
-async function crawl(id, token) {
+async function crawl(id, token, transformer) {
   browser = await puppeteer.launch({
     headless: true,
     executablePath: '/Applications/Chromium.app/Contents/MacOS/Chromium',
   });
-  log('browser launched');
+  log('(headless)browser launched');
   const page = await browser.newPage();
 
   //TODO: hard-coded agent string
@@ -67,11 +67,11 @@ async function crawl(id, token) {
   await page.goto('https://i.mi.com/v1#note');
   log('connection to micloud established');
 
-  let contentArray;
+  let noteArray;
   // inject script
-  await page.addScriptTag({path: join(__dirname, 'core.js')});
+  await page.addScriptTag({ path: join(__dirname, 'core.js') });
   try {
-    contentArray = await page.evaluate(async () => {
+    noteArray = await page.evaluate(async () => {
       let noteRoots = Array.from(document.getElementById('js_note_mod_ctn').contentDocument.getElementsByClassName('js_note_brief note-brief js_normal_note'));
 
       return noteRoots.map(parseToNote);
@@ -80,13 +80,16 @@ async function crawl(id, token) {
     error(COOKIE_INVALID);
     throw err;
   }
-  contentArray = contentArray.map(HTMLTransformer);
+  // filter out the note whose contentArray is empty
+  noteArray = noteArray.filter(note => note.contentArray.length > 0);
+  noteArray = transformer.loads(noteArray);
 
   await browser.close();
-	return JSON.stringify(contentArray, null, 2);
+  return JSON.stringify(noteArray, null, 2);
 }
 
 async function main() {
+  // TODO: 責任鏈模式解析 process.argv
   // fetch cookie data from file
   let cookieFilePath = process.argv[2];
   if (!cookieFilePath) {
@@ -108,11 +111,12 @@ async function main() {
   if (fs.existsSync(outputFile)) {
     overwriteFlag = await question('The output.json file is already present, are you sure to overwrite it?');
   }
-  log('preparing to write data...');
   if (overwriteFlag) {// write to output.json anyway
+    log('preparing to write data...');
     const output = fs.createWriteStream(outputFile, 'utf8');
+    const transformer = new DayOneTransformer();
     try {
-      const JSONString = await crawl(cookies[0], cookies[1]);
+      const JSONString = await crawl(cookies[0], cookies[1], transformer);
 
       await writeToFile(JSONString, output);
     } catch (err) {
